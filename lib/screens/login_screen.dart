@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:rive/rive.dart';
-import 'dart:async';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -11,134 +10,46 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  bool obscurePassword = true;
-
-  //Cerebro de la lógica de las animaciones
-  StateMachineController? controller;
-  SMIBool? isChecking;
-  SMIBool? isHandsUp;
-  SMITrigger? trigSuccess;
-  SMITrigger? trigFail;
-  SMINumber? numLook;
-
-  //FocusNodes
-  final emailFocus = FocusNode();
-  final passFocus = FocusNode();
-
-  //Timers
-  Timer? _typingDebounce;
-
-  //Controllers
-  final emailCtrl = TextEditingController();
-  final passCtrl = TextEditingController();
-
-  //Errores para mostrar en la UI
-  String? emailError;
-  String? passError;
-
-  //Estado de carga y captcha
+  // Controlador para la animación Rive
+  late RiveAnimationController _animationController;
+  
+  // Estado para controlar la carga del botón
   bool isLoading = false;
-  bool captchaChecked = false;
-
-  //Validadores
-  bool isValidEmail(String email) {
-    final re = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-    return re.hasMatch(email);
-  }
-
-  bool isValidPassword(String pass) {
-    final re = RegExp(
-      r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$',
-    );
-    return re.hasMatch(pass);
-  }
-
-  //Valida condiciones individuales para checklist dinámico
-  bool hasMinLength(String pass) => pass.length >= 8;
-  bool hasUppercase(String pass) => pass.contains(RegExp(r'[A-Z]'));
-  bool hasLowercase(String pass) => pass.contains(RegExp(r'[a-z]'));
-  bool hasNumberAndSymbol(String pass) =>
-      pass.contains(RegExp(r'\d')) && pass.contains(RegExp(r'[^A-Za-z0-9]'));
-
-  //Acción al presionar Login
-  Future<void> _onLogin() async {
-    if (isLoading) return;
-
-    final email = emailCtrl.text.trim();
-    final pass = passCtrl.text;
-
-    final eError = email.isEmpty
-        ? "El email no puede estar vacío"
-        : (isValidEmail(email) ? null : "Email inválido");
-
-    final pError = pass.isEmpty
-        ? "La contraseña no puede estar vacía"
-        : (isValidPassword(pass)
-              ? null
-              : "Contraseña inválida, revisa los requisitos");
-
-    final success =
-        (eError == null && pError == null && captchaChecked == true);
-
-
-
-    //Esperar un frame antes del trigger
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    //Simular carga
-    await Future.delayed(const Duration(seconds: 1));
-
-    //Disparar animación
-    if (success) {
-      trigSuccess?.fire();
-    } else {
-      trigFail?.fire();
-    }
-
-    // 🔹 Reiniciar el captcha después de cada intento
-    setState(() {
-      captchaChecked = false;
-      isLoading = false;
-    });
-  }
+  
+  // Rating actual seleccionado por el usuario
+  double currentRating = 3.0;
+  
+  // Nombre de la animación actual que se está reproduciendo
+  String _currentAnimation = "idle";
 
   @override
   void initState() {
     super.initState();
+    // Inicializar la animación con el estado "idle" (inactivo)
+    _animationController = SimpleAnimation('idle');
+  }
 
-    emailFocus.addListener(() {
-      if (emailFocus.hasFocus) {
-        isHandsUp?.change(false);
-        numLook?.value = 50;
-      }
-    });
-
-    passFocus.addListener(() {
-      isHandsUp?.change(passFocus.hasFocus);
-    });
-
-
-
-    //Validación en vivo password
-    passCtrl.addListener(() {
-      setState(() {
-        final pass = passCtrl.text;
-        if (pass.isEmpty) {
-          passError = null;
-        } else if (!isValidPassword(pass)) {
-          passError = "Contraseña inválida, revisa los requisitos";
-        } else {
-          passError = null;
-        }
-      });
+  /// Método para cambiar la animación del personaje Rive
+  /// [newAnimation] - nombre de la nueva animación a reproducir
+  void _changeAnimation(String newAnimation) {
+    // Evitar cambiar a la misma animación actual (optimización)
+    if (_currentAnimation == newAnimation) return;
+    
+    setState(() {
+      _currentAnimation = newAnimation;
+      // Crear un nuevo controlador con la animación especificada
+      // Esto reinicia la animación cada vez que cambia
+      _animationController = SimpleAnimation(newAnimation);
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    // Obtener las dimensiones de la pantalla para diseño responsive
     final Size size = MediaQuery.of(context).size;
 
     return Scaffold(
+      // Evitar que el teclado superponga el contenido
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: SingleChildScrollView(
@@ -146,92 +57,102 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
+                // Contenedor para la animación Rive - ocupa 40% de la altura de la pantalla
                 SizedBox(
                   width: size.width,
-                  height: 200,
+                  height: size.height * 0.4,
                   child: RiveAnimation.asset(
+                    // Ruta del archivo Rive (debe estar en la carpeta assets)
                     'assets/animated_login_character.riv',
-                    stateMachines: ["Login Machine"],
-                    onInit: (artboard) {
-                      controller = StateMachineController.fromArtboard(
-                        artboard,
-                        "Login Machine",
-                      );
-                      if (controller == null) return;
-                      artboard.addController(controller!);
-                      isChecking = controller!.findSMI('isChecking');
-                      isHandsUp = controller!.findSMI('isHandsUp');
-                      trigSuccess = controller!.findSMI('trigSuccess');
-                      trigFail = controller!.findSMI('trigFail');
-                      numLook = controller!.findSMI('numLook');
-                    },
+                    // Lista de animaciones a reproducir (solo la actual)
+                    animations: [_currentAnimation],
+                    // Controladores de animación (el actual)
+                    controllers: [_animationController],
+                    // Escalar la animación para que quepa en el contenedor
+                    fit: BoxFit.contain,
                   ),
                 ),
+
                 const SizedBox(height: 20),
 
-                //Enjoying sounter text
+                // Título principal de la pantalla
                 Text(
-                    "Enjoying sounter?", 
-                    style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                    
-                    
-                    ),
+                  "Enjoying sounter?",
+                  style: TextStyle(
+                    fontSize: 40,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+
                 const SizedBox(height: 20),
 
+                // Subtítulo que pregunta por la calificación
                 Text(
-                    "with how many stars would you rate us?",
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.normal,
-                    ),
-                    textAlign: TextAlign.center,
-                    
-                    
-                    ),
+                  "with how many stars would you rate us?",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.normal,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
 
                 const SizedBox(height: 20),
+
+                // Widget de barras de rating con 5 estrellas
                 RatingBar.builder(
-                    initialRating: 3,
-                    minRating: 1,
-                    direction: Axis.horizontal,
-                    itemCount: 5,
-                    itemBuilder: (context, index) => Icon(
-                        Icons.star,
-                        color: Colors.amber,
-                    ),
-                    itemSize: 70,
-                    onRatingUpdate: (rating) {
-                         if (rating >= 4) {
-                        trigSuccess?.fire();
-                        } else if (rating <= 2) {
-                            
-                        trigFail?.fire();
-                        
-                        }
+                  // Rating inicial de 3 estrellas
+                  initialRating: 3,
+                  // Rating mínimo permitido (1 estrella)
+                  minRating: 1,
+                  // Dirección horizontal de las estrellas
+                  direction: Axis.horizontal,
+                  // Número total de estrellas
+                  itemCount: 5,
+                  // Espaciado horizontal entre estrellas
+                  itemPadding: EdgeInsets.symmetric(horizontal: 3.0),
+                  // Builder para cada estrella individual
+                  itemBuilder: (context, index) => Icon(
+                    Icons.star,
+                    color: Colors.amber, // Color amarillo para las estrellas
+                  ),
+                  // Tamaño grande de las estrellas (70px)
+                  itemSize: 70,
+                  // Callback que se ejecuta cuando el usuario cambia el rating
+                  onRatingUpdate: (rating) {
+                    
+                    if (rating >= 4) {
+                      _changeAnimation("success");
+                    } else if (rating <= 2) {
+                      _changeAnimation("fail");
+                    } else {
+                      _changeAnimation("idle");
+                    }
+                  },
+                ),
 
-                    },
-                ),  
+                const SizedBox(height: 30),
 
-                const SizedBox(height:30),
-
-                //Botón de rate now
+                // Botón principal para enviar la calificación
                 SizedBox(
-                  width: size.width,
+                  width: size.width, // Ancho completo de la pantalla
                   height: 50,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
+                      // Color morado para el botón
                       backgroundColor: Colors.purple,
+                      // Bordes redondeados
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: isLoading ? null : _onLogin,
+                    onPressed: () {
+                      // TODO: Implementar lógica de envío de rating
+                    },
                     child: isLoading
-                        ? const SizedBox(
+                        ? // Mostrar indicador de carga si está cargando
+                        const SizedBox(
                             width: 24,
                             height: 24,
                             child: CircularProgressIndicator(
@@ -239,30 +160,32 @@ class _LoginScreenState extends State<LoginScreen> {
                               strokeWidth: 2,
                             ),
                           )
-                        : const Text(
+                        : // Mostrar texto "Rate" en estado normal
+                        const Text(
                             'Rate',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.white,
-                    
-                            fontSize: 18),
-                         
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                            ),
                           ),
                   ),
                 ),
 
                 const SizedBox(height: 20),
-                SizedBox(
-                  width: size.width,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text("NO THANKS",
-                          style: TextStyle(
-                            color: Colors.purple,
-                            fontWeight: FontWeight.bold,
-                          )),
-                      
-                    ],
+                
+                // Botón secundario para saltar la calificación
+                TextButton(
+                  onPressed: () {
+                    // TODO: Implementar lógica para saltar la calificación
+                  },
+                  child: const Text(
+                    "NO THANKS",
+                    style: TextStyle(
+                      color: Colors.purple, // Color morado para coincidir con el tema
+                      fontWeight: FontWeight.normal,
+                      fontSize: 20,
+                    ),
                   ),
                 ),
               ],
@@ -271,30 +194,5 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
-  }
-
-  //Widget auxiliar para checklist
-  Widget _buildCheckItem(String text, bool passed) {
-    return Row(
-      children: [
-        Icon(
-          passed ? Icons.check_circle : Icons.cancel,
-          color: passed ? Colors.green : Colors.red,
-          size: 18,
-        ),
-        const SizedBox(width: 8),
-        Text(text),
-      ],
-    );
-  }
-
-  @override
-  void dispose() {
-    passCtrl.dispose();
-    emailCtrl.dispose();
-    emailFocus.dispose();
-    passFocus.dispose();
-    _typingDebounce?.cancel();
-    super.dispose();
   }
 }
